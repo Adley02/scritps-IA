@@ -1,0 +1,101 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+class LinearRegression:
+    def __init__(self, x, y):
+        self.x = np.array(x)
+        self.y = np.array(y)
+        self.b0 = None # Intercepto
+        self.b1 = None # Coeficiente angular
+        self.y_pred = None # Para armazenar os valores preditos
+
+    def fit(self): # treinamento
+        xbar = np.mean(self.x) 
+        ybar = np.mean(self.y) 
+        
+        # Estimativas de mínimos quadrados
+        self.b1 = np.sum((self.y - ybar) * (self.x - xbar)) / np.sum((self.x - xbar)**2)
+        self.b0 = ybar - self.b1 * xbar
+        
+        self.y_pred = self.predict(self.x)
+        return self.y_pred
+
+    def predict(self, x_new): # função para determinar os valores estimados de Y 
+        return self.b0 + self.b1 * np.array(x_new)
+
+    def summary(self): # aqui apenas mostra o modelo base para estimar os valores
+        print(f"Modelo: y = {self.b0:.2f} + {self.b1:.2f} * x")
+
+    def analise_residuos(self):
+        # Função pra determinar os residuos (ei = yi - ŷi)
+        residuos = self.y - self.y_pred
+        
+        # Formatação da tabela
+        print(f"\n{'-'*75}")
+        print(f"{'Observação i':<15} | {'Valor observado y':<20} | {'Valor ajustado ŷi':<20} | {'Resíduo ei':<15}")
+        print(f"{'-'*75}")
+        
+        # Tabela de residuos
+        for i in range(len(self.y)):
+            print(f"{i+1:<15} | {self.y[i]:<20.2f} | {self.y_pred[i]:<20.2f} | {residuos[i]:<15.2f}")
+
+
+try:
+    dados = np.loadtxt("qb_2004.csv", delimiter=",", skiprows=1, usecols=(2, 3)) # aqui é apenas para o código ler o nosso arquivo csv e representar os dados da tabela
+    
+    X = dados[:, 0]
+    Y = dados[:, 1]
+    
+    modelo = LinearRegression(X, Y) # aqui a gente usa a função definida lá em cima, para pegar os dados X e Y da tabela
+    modelo.fit() # e aqui é onde utilizamos a função de treinamento, para fazer as estimativas de Y
+    
+    print("\n--- Estimativas de mínimos quadrados ---")
+    modelo.summary() 
+    
+    print("\n--- Estimativa para 7,5 jardas ---")
+    predict_75 = modelo.predict(7.5)
+    print(f"Para x = 7.5 jardas , a pontuação média estimada é de: {predict_75:.4f}")
+    
+    print("\n--- Mudança por diminuição de 1 jarda ---")
+    # O coeficiente b1 é a mudança para o aumento de 1 jarda, pra diminuir é só inventer o b1
+    menos_umjarda = -modelo.b1
+    print(f"Uma diminuição de 1 jarda por tentativa altera a pontuação média em: {menos_umjarda:.4f}")
+    
+    print("\n--- Valor ajustado e resíduo para x = 7.21 ---")
+    # Encontrando o índice onde x é (aproximadamente) 7.21 no dataset original
+    tolerancia = 0.001
+    indices_721 = np.where(np.abs(X - 7.21) < tolerancia)[0]
+    
+    if len(indices_721) > 0: # aqui é pra encontrar exatamente o valor 7,21 na tabela, depois disso, mostra o que foi pedido para esse valor
+        idx = indices_721[0]
+        y_real_721 = Y[idx]
+        y_predict_721 = modelo.predict(7.21)
+        residuo_721 = y_real_721 - y_predict_721
+        print(f"Valor observado (y): {y_real_721}")
+        print(f"Valor ajustado (ŷ): {y_predict_721:.2f}")
+        print(f"Resíduo (e): {residuo_721:.2f}")
+    else:
+        print("Aviso: O valor exato de x = 7.21 não foi encontrado no dataset fornecido.")
+
+    print("\n--- Análise de Resíduos ---")
+    modelo.analise_residuos()
+
+    # plot do gráfico
+    plt.figure(figsize=(8, 6))
+
+    plt.scatter(X, Y, color='blue', alpha=0.7, label='Dados Observados (Reais)')
+
+    plt.plot(X, modelo.y_pred, color='red', linewidth=2, label='Reta de Regressão')
+
+    plt.title('Regressão Linear Simples: Jardas vs Pontuação', fontsize=14, fontweight='bold')
+    plt.xlabel('Jardas por Tentativa', fontsize=12)
+    plt.ylabel('Pontuação', fontsize=12)
+    plt.legend(loc='best')
+    plt.grid(True, linestyle='--', alpha=0.5)
+
+    plt.show()
+
+except FileNotFoundError:
+    print(f"Erro: O arquivo 'qb_2004.csv' não foi encontrado. Verifique o caminho e tente novamente.")
+
+
