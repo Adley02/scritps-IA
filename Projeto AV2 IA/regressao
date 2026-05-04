@@ -1,0 +1,65 @@
+import numpy as np
+
+# --- kNN Regressão ---
+class KNNRegressor:
+    def __init__(self, k=5, metrica='euclidiana'):
+        self.k = k
+        self.metrica = metrica
+
+    def fit(self, X, y):
+        self.X_treino = X
+        self.y_treino = y
+
+    def predict(self, X_teste):
+        predicoes = [self._predizer_uma_amostra(x) for x in X_teste]
+        return np.array(predicoes)
+
+    def _predizer_uma_amostra(self, x):
+        if self.metrica == 'euclidiana':
+            distancias = np.sqrt(np.sum((self.X_treino - x)**2, axis=1))
+        elif self.metrica == 'manhattan':
+            distancias = np.sum(np.abs(self.X_treino - x), axis=1)
+
+        k_indices = np.argsort(distancias)[:self.k]
+        k_valores = self.y_treino[k_indices]
+        
+        # Em vez de votação , a regressão retorna a MÉDIA dos vizinhos
+        return np.mean(k_valores)
+    
+# --- Regressão Linear Múltipla ---
+class RegressaoLinearMultipla:
+    def __init__(self):
+        self.beta = None
+
+    def fit(self, X, y):
+        X_b = np.c_[np.ones((X.shape[0], 1)), X]
+        
+        self.beta = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)
+
+    def predict(self, X):
+        X_b = np.c_[np.ones((X.shape[0], 1)), X]
+
+        return X_b.dot(self.beta)
+
+def calcular_metricas_regressao(y_verdadeiro, y_predito, n_atributos):
+    """Calcula R2 e R2 Ajustado na mão."""
+    y_verdadeiro = np.array(y_verdadeiro)
+    y_predito = np.array(y_predito)
+    n = len(y_verdadeiro)
+    p = n_atributos
+    
+    ss_res = np.sum((y_verdadeiro - y_predito)**2)
+    
+    ss_tot = np.sum((y_verdadeiro - np.mean(y_verdadeiro))**2)
+    
+    if ss_tot == 0:
+        r2 = 0.0
+    else:
+        r2 = 1 - (ss_res / ss_tot)
+        
+    if n - p - 1 == 0:
+        r2_ajustado = r2  
+    else:
+        r2_ajustado = 1 - ((1 - r2) * (n - 1) / (n - p - 1))
+    
+    return r2, r2_ajustado  
