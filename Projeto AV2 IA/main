@@ -1,0 +1,355 @@
+import time
+import numpy as np
+from collections import Counter
+from bayes import BayesianoUnivariado, BayesianoMultivariado
+from regressao import KNNRegressor, RegressaoLinearMultipla, calcular_metricas_regressao
+
+# --- Divisão de Treino e Teste ---
+def split_treino_teste(X, y, proporcao_teste=0.2):
+    tamanho_teste = int(len(X) * proporcao_teste)
+    
+    indices = np.random.permutation(len(X))
+    indices_teste = indices[:tamanho_teste]
+    indices_treino = indices[tamanho_teste:]
+    
+    return X[indices_treino], X[indices_teste], y[indices_treino], y[indices_teste]
+
+# --- Funções de Distância ---
+def distancia_euclidiana(x1, x2):
+    return np.sqrt(np.sum((x1 - x2)**2))
+
+def distancia_manhattan(x1, x2):
+    
+    return np.sum(np.abs(x1 - x2))
+
+# --- Algoritmo kNN ---
+class KNNClassificador:
+
+    def __init__(self, k=3, metrica='euclidiana'):
+        self.k = k
+        self.metrica = metrica
+        self.X_treino = None
+        self.y_treino = None
+
+    def fit(self, X, y):
+        self.X_treino = X
+        self.y_treino = y
+
+    def predict(self, X_teste):
+        predicoes = [self._predizer_uma_amostra(x) for x in X_teste]
+        return np.array(predicoes)
+
+    # --- Algoritmo kNN Otimizado (Vetorizado) ---
+    def _predizer_uma_amostra(self, x):
+        
+        if self.metrica == 'euclidiana':
+            distancias = np.sqrt(np.sum((self.X_treino - x)**2, axis=1))
+        elif self.metrica == 'manhattan':
+            distancias = np.sum(np.abs(self.X_treino - x), axis=1)
+        else:
+            raise ValueError("Métrica inválida.")
+
+        k_indices_mais_proximos = np.argsort(distancias)[:self.k]
+        k_rotulos_vizinhos = self.y_treino[k_indices_mais_proximos] 
+        valores, contagens = np.unique(k_rotulos_vizinhos, return_counts=True)
+        indice_mais_comum = np.argmax(contagens)
+        
+        return valores[indice_mais_comum]
+
+def carregar_dataset_lol(caminho_arquivo):
+    X = []
+    y = []
+    
+    with open(caminho_arquivo, 'r') as arquivo:
+        for linha in arquivo:
+            linha = linha.strip()
+            
+            if not linha or linha.startswith('@') or linha.startswith('%'):
+                continue
+        
+            valores = linha.split(',')
+            
+            try:
+                
+                valores_numericos = [float(v) for v in valores]              
+                
+                alvo = valores_numericos[2]
+                features = valores_numericos[3:]
+                
+                X.append(features)
+                y.append(alvo)
+                
+            except ValueError:
+
+                continue
+
+    return np.array(X), np.array(y)
+
+def carregar_dataset_academia(caminho_arquivo):
+  
+    X = []
+    y = []
+    
+    with open(caminho_arquivo, 'r', encoding='utf-8') as arquivo:
+        for linha in arquivo:
+            linha = linha.strip()
+            
+            
+            if not linha or linha.startswith('@') or linha.startswith('%'):
+                continue
+                
+           
+            valores = linha.split(',')
+            
+            try:
+                
+                alvo = float(valores[0])
+                
+                
+                features = [float(v) for v in valores[2:]]
+                
+                X.append(features)
+                y.append(alvo)
+                
+            except ValueError as e:
+                
+                continue
+                
+    return np.array(X), np.array(y)
+
+# --- Normalização ---
+def normalizar_dados(X):
+    media = np.mean(X, axis=0)
+    desvio_padrao = np.std(X, axis=0)
+
+    desvio_padrao[desvio_padrao == 0] = 1 
+    
+    X_normalizado = (X - media) / desvio_padrao
+    return X_normalizado
+
+# --- Cálculos das métricas ---
+def calcular_metricas_classificacao(y_verdadeiro, y_predito):
+  
+    y_verdadeiro = np.array(y_verdadeiro)
+    y_predito = np.array(y_predito)
+    
+    acuracia = np.mean(y_verdadeiro == y_predito)
+     
+    Verdadeiros_Positivos = np.sum((y_verdadeiro == 1) & (y_predito == 1))
+    Falsos_Positivos = np.sum((y_verdadeiro == 0) & (y_predito == 1))
+    Falsos_Negativos = np.sum((y_verdadeiro == 1) & (y_predito == 0))
+    
+    if (Verdadeiros_Positivos + Falsos_Positivos) == 0:
+        precisao = 0.0
+    else:
+        precisao = Verdadeiros_Positivos / (Verdadeiros_Positivos + Falsos_Positivos)
+        
+    if (Verdadeiros_Positivos + Falsos_Negativos) == 0:
+        recall = 0.0
+    else:
+        recall = Verdadeiros_Positivos / (Verdadeiros_Positivos + Falsos_Negativos)
+        
+    if (precisao + recall) == 0:
+        f1_score = 0.0
+    else:
+        f1_score = 2 * (precisao * recall) / (precisao + recall)
+        
+    return acuracia, precisao, recall, f1_score
+
+def validacao_cruzada_regressao(modelo, nome_modelo, X, y, k_folds=5):
+
+    print(f"\nIniciando Validação Cruzada ({k_folds} Folds) para: {nome_modelo}")
+    
+    indices = np.random.permutation(len(X))
+    tamanho_fold = len(X) // k_folds
+    
+    metricas = {'r2': [], 'r2_ajustado': [], 't_treino': [], 't_teste': []}
+    n_atributos = X.shape[1]
+    
+    for i in range(k_folds):
+        inicio_teste = i * tamanho_fold
+        fim_teste = (i + 1) * tamanho_fold if i != k_folds - 1 else len(X)
+        
+        indices_teste = indices[inicio_teste:fim_teste]
+        indices_treino = np.concatenate((indices[:inicio_teste], indices[fim_teste:]))
+        
+        X_treino, y_treino = X[indices_treino], y[indices_treino]
+        X_teste, y_teste = X[indices_teste], y[indices_teste]
+        
+        t0_treino = time.time()
+        modelo.fit(X_treino, y_treino)
+        tempo_treino = time.time() - t0_treino
+        
+        t0_teste = time.time()
+        y_predito = modelo.predict(X_teste)
+        tempo_teste = time.time() - t0_teste
+        
+        # Métricas
+        r2, r2_adj = calcular_metricas_regressao(y_teste, y_predito, n_atributos)
+        
+        metricas['r2'].append(r2)
+        metricas['r2_ajustado'].append(r2_adj)
+        metricas['t_treino'].append(tempo_treino)
+        metricas['t_teste'].append(tempo_teste)
+        
+        print(f"  Fold {i+1}/{k_folds} concluído.")
+
+    def formatar_resultado(lista):
+        media = np.mean(lista)
+        desvio = np.std(lista)
+        return f"{media:.4f} ± {desvio:.4f}"
+        
+    resultado_final = {
+        'Modelo': nome_modelo,
+        'R2-Score': formatar_resultado(metricas['r2']),
+        'R2-Ajustado': formatar_resultado(metricas['r2_ajustado']),
+        'Tempo Treino (s)': formatar_resultado(metricas['t_treino']),
+        'Tempo Teste (s)': formatar_resultado(metricas['t_teste'])
+    }
+    
+    return resultado_final
+
+# --- Validação Cruzada (K-Fold) ---
+def validacao_cruzada(modelo, nome_modelo, X, y, k_folds=5):
+    print(f"\nIniciando Validação Cruzada ({k_folds} Folds) para: {nome_modelo}")
+    
+    indices = np.random.permutation(len(X))
+    tamanho_fold = len(X) // k_folds
+    
+    metricas = {'acuracia': [], 'precisao': [], 'recall': [], 'f1': [], 't_treino': [], 't_teste': []}
+    
+    for i in range(k_folds):
+        
+        inicio_teste = i * tamanho_fold
+        
+        fim_teste = (i + 1) * tamanho_fold if i != k_folds - 1 else len(X)
+        
+        indices_teste = indices[inicio_teste:fim_teste]
+        
+        indices_treino = np.concatenate((indices[:inicio_teste], indices[fim_teste:]))
+        
+        X_treino, y_treino = X[indices_treino], y[indices_treino]
+        X_teste, y_teste = X[indices_teste], y[indices_teste]
+        
+        t0_treino = time.time()
+        modelo.fit(X_treino, y_treino)
+        tempo_treino = time.time() - t0_treino
+        
+        t0_teste = time.time()
+        y_predito = modelo.predict(X_teste)
+        tempo_teste = time.time() - t0_teste
+        
+        acuracia, precisao, recall, f1 = calcular_metricas_classificacao(y_teste, y_predito)
+        
+        metricas['acuracia'].append(acuracia)
+        metricas['precisao'].append(precisao)
+        metricas['recall'].append(recall)
+        metricas['f1'].append(f1)
+        metricas['t_treino'].append(tempo_treino)
+        metricas['t_teste'].append(tempo_teste)
+        
+        print(f"  Fold {i+1}/{k_folds} concluído.")
+
+    def formatar_resultado(lista):
+        media = np.mean(lista)
+        desvio = np.std(lista)
+        return f"{media:.4f} ± {desvio:.4f}"
+        
+    resultado_final = {
+        'Modelo': nome_modelo,
+        'Acurácia': formatar_resultado(metricas['acuracia']),
+        'Precisão': formatar_resultado(metricas['precisao']),
+        'F1-Score': formatar_resultado(metricas['f1']),
+        'Tempo Treino (s)': formatar_resultado(metricas['t_treino']),
+        'Tempo Teste (s)': formatar_resultado(metricas['t_teste'])
+    }
+    
+    return resultado_final
+
+if __name__ == "__main__":
+    print("="*50)
+    print("PROJETO 2 - INTELIGÊNCIA ARTIFICIAL COMPUTACIONAL")
+    print("="*50)
+    print("[1] Gerar Tabela 1: Classificadores (Dataset LoL)")
+    print("[2] Gerar Tabela 2: Regressores (Dataset Academia)")
+    print("[0] Sair")
+    print("="*50)
+    
+    escolha = input("\nDigite o número da opção desejada: ")
+    
+    if escolha == '1':
+        print("\n>>> INICIANDO TAREFA DE CLASSIFICAÇÃO (LoL) <<<")
+        caminho_arquivo = 'league_dataset.arff' 
+        X_completo, y_completo = carregar_dataset_lol(caminho_arquivo)
+        
+        # Redutor opcional para agilizar
+        tamanho_desejado = 15000
+        if len(y_completo) > tamanho_desejado:
+            indices_aleatorios = np.random.choice(len(y_completo), tamanho_desejado, replace=False)
+            X_completo = X_completo[indices_aleatorios]
+            y_completo = y_completo[indices_aleatorios]
+            print(f"Dataset reduzido para {tamanho_desejado} instâncias para agilizar K-Fold.")
+
+        X_norm = normalizar_dados(X_completo)
+        
+        modelos_para_testar = [
+            (KNNClassificador(k=5, metrica='euclidiana'), "K-vizinhos (Dist. Euclidiana)"),
+            (KNNClassificador(k=5, metrica='manhattan'), "K-vizinhos (Dist. Manhattan)"),
+            (BayesianoUnivariado(), "Bayesiano (Univariado)"),
+            (BayesianoMultivariado(), "Bayesiano (Multivariado)")
+        ]
+        
+        resultados_tabela = []
+        for modelo, nome in modelos_para_testar:
+            resultado = validacao_cruzada(modelo, nome, X_norm, y_completo, k_folds=5)
+            resultados_tabela.append(resultado)
+            
+        print("\n" + "="*95)
+        print(f"TABELA 1: ANÁLISE COMPARATIVA DE CLASSIFICADORES")
+        print("-" * 95)
+        print(f"{'Classificador':<30} | {'Acurácia':<15} | {'Precisão':<15} | {'F1-Score':<15} | {'T. Treino (s)':<15} | {'T. Teste (s)'}")
+        print("-" * 95)
+        for res in resultados_tabela:
+            print(f"{res['Modelo']:<30} | {res['Acurácia']:<15} | {res['Precisão']:<15} | {res['F1-Score']:<15} | {res['Tempo Treino (s)']:<15} | {res['Tempo Teste (s)']}")
+        print("=" * 95)
+
+    elif escolha == '2':
+        print("\n>>> INICIANDO TAREFA DE REGRESSÃO (Academia) <<<")
+        caminho_arquivo_academia = 'campus_gym.arff' 
+        X_completo, y_completo = carregar_dataset_academia(caminho_arquivo_academia)
+        
+        # Redutor opcional para agilizar
+        tamanho_desejado = 15000
+        if len(y_completo) > tamanho_desejado:
+            indices_aleatorios = np.random.choice(len(y_completo), tamanho_desejado, replace=False)
+            X_completo = X_completo[indices_aleatorios]
+            y_completo = y_completo[indices_aleatorios]
+            print(f"Dataset de Regressão reduzido para {tamanho_desejado} instâncias para agilizar o K-Fold.")
+
+        X_norm = normalizar_dados(X_completo)
+        
+        regressores_para_testar = [
+            (KNNRegressor(k=5, metrica='euclidiana'), "K-vizinhos Regressor (Euclidiana)"),
+            (KNNRegressor(k=5, metrica='manhattan'), "K-vizinhos Regressor (Manhattan)"),
+            (RegressaoLinearMultipla(), "Regressão Linear Múltipla")
+        ]
+        
+        resultados_tabela_regressao = []
+        for modelo, nome in regressores_para_testar:
+            resultado = validacao_cruzada_regressao(modelo, nome, X_norm, y_completo, k_folds=5)
+            resultados_tabela_regressao.append(resultado)
+            
+        print("\n" + "="*105)
+        print(f"TABELA 2: ANÁLISE COMPARATIVA DE REGRESSORES")
+        print("-" * 105)
+        print(f"{'Regressão':<35} | {'R2-Score':<15} | {'R2-Ajustado':<15} | {'T. Treino (s)':<15} | {'T. Teste (s)'}")
+        print("-" * 105)
+        for res in resultados_tabela_regressao:
+            print(f"{res['Modelo']:<35} | {res['R2-Score']:<15} | {res['R2-Ajustado']:<15} | {res['Tempo Treino (s)']:<15} | {res['Tempo Teste (s)']}")
+        print("=" * 105)
+
+    elif escolha == '0':
+        print("\nSaindo do programa. Bom trabalho!")
+        
+    else:
+        print("\nOpção inválida! Rode o script novamente e escolha 1, 2 ou 0.")
