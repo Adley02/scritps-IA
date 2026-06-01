@@ -1,0 +1,29 @@
+import numpy as np
+
+class PerceptronSimples:
+    def __init__(self, taxa_aprendizado=0.01, epocas=100):
+        self.taxa_aprendizado = taxa_aprendizado
+        self.epocas = epocas
+        self.pesos = None
+        self.vies = None
+
+    def fit(self, X, y):
+        n_amostras, n_atributos = X.shape
+        self.pesos = np.zeros(n_atributos)
+        self.vies = 0.0
+
+        for epoca in range(self.epocas):
+            for idx, x_i in enumerate(X):
+                z = np.dot(x_i, self.pesos) + self.vies
+                y_predito = 1 if z >= 0 else 0
+                erro = y[idx] - y_predito
+                
+                if erro != 0:
+                    atualizacao = self.taxa_aprendizado * erro
+                    self.pesos += atualizacao * x_i
+                    self.vies += atualizacao
+
+    def predict(self, X):
+        z = np.dot(X, self.pesos) + self.vies
+        y_predito = np.where(z >= 0, 1, 0)
+        return y_predito
