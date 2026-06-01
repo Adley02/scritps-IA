@@ -1,0 +1,68 @@
+import numpy as np
+
+# --- Algoritmo Bayesiano ---
+class BayesianoUnivariado:
+    def fit(self, X, y):
+        self.classes = np.unique(y)
+        self.medias = {}
+        self.desvios = {}
+        self.priori = {}
+        
+        for c in self.classes:
+            X_c = X[y == c]
+            self.medias[c] = np.mean(X_c, axis=0)
+            self.desvios[c] = np.std(X_c, axis=0) + 1e-9 
+            self.priori[c] = len(X_c) / len(X)
+            
+    def _calcular_densidade_univariada(self, x, mu, sigma):
+        termo1 = 1 / (np.sqrt(2 * np.pi) * sigma)
+        expoente = np.exp(-0.5 * ((x - mu) / sigma)**2)
+        return termo1 * expoente
+        
+    def predict(self, X):
+        y_pred = []
+        for x in X:
+            probabilidades = []
+            for c in self.classes:
+                verossimilhanca = self._calcular_densidade_univariada(x, self.medias[c], self.desvios[c])
+                probabilidade_final = np.log(self.priori[c]) + np.sum(np.log(verossimilhanca))
+                probabilidades.append(probabilidade_final)
+            y_pred.append(self.classes[np.argmax(probabilidades)])
+        return np.array(y_pred)
+
+# --- Algoritmo Bayesiano Multivariado ---
+class BayesianoMultivariado:
+    def fit(self, X, y):
+        self.classes = np.unique(y)
+        self.medias = {}
+        self.covariancias = {}
+        self.priori = {}
+        
+        for c in self.classes:
+            X_c = X[y == c]
+            self.medias[c] = np.mean(X_c, axis=0)
+            matriz_cov = np.cov(X_c, rowvar=False)
+            matriz_cov += np.eye(X_c.shape[1]) * 1e-6
+            self.covariancias[c] = matriz_cov
+            self.priori[c] = len(X_c) / len(X)
+            
+    def _calcular_densidade_multivariada(self, x, mu, matriz_cov):
+        d = len(mu)
+        det_cov = np.linalg.det(matriz_cov)
+        inv_cov = np.linalg.inv(matriz_cov)
+        x_menos_mu = x - mu
+        termo_matricial = np.dot(np.dot(x_menos_mu.T, inv_cov), x_menos_mu)
+        expoente = -0.5 * termo_matricial
+        denominador = ((2 * np.pi) ** (d / 2)) * np.sqrt(det_cov)
+        return expoente - np.log(denominador)
+        
+    def predict(self, X):
+        y_pred = []
+        for x in X:
+            probabilidades = []
+            for c in self.classes:
+                prob_prior = np.log(self.priori[c])
+                verossimilhanca = self._calcular_densidade_multivariada(x, self.medias[c], self.covariancias[c])
+                probabilidades.append(prob_prior + verossimilhanca)
+            y_pred.append(self.classes[np.argmax(probabilidades)])
+        return np.array(y_pred)
